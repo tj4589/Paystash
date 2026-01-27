@@ -16,7 +16,7 @@ const WithdrawScreen = () => {
     const [bank, setBank] = useState('GTBank');
     const [isLoading, setIsLoading] = useState(false);
 
-    const handleWithdraw = () => {
+    const handleWithdraw = async () => {
         if (!amount || isNaN(amount) || parseFloat(amount) <= 0) {
             Alert.alert('Error', 'Invalid amount');
             return;
@@ -29,22 +29,24 @@ const WithdrawScreen = () => {
 
         setIsLoading(true);
 
-        // Simulate API call
-        setTimeout(() => {
-            addTransaction({
+        try {
+            await addTransaction({
                 title: `Withdrawal to ${bank}`,
                 amount: -parseFloat(amount),
                 type: 'debit',
-                status: 'confirmed' // In real app, might be 'pending'
+                status: 'confirmed'
             });
 
-            setIsLoading(false);
             Alert.alert(
                 'Success',
                 `Withdrawal of ₦${parseFloat(amount).toLocaleString()} initiated.`,
                 [{ text: 'OK', onPress: () => navigation.navigate('Dashboard') }]
             );
-        }, 1500);
+        } catch (error) {
+            Alert.alert('Error', 'Withdrawal failed: ' + error.message);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (

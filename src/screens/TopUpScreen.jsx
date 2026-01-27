@@ -17,17 +17,19 @@ const TopUpScreen = () => {
 
     const topUp = usePaystashStore((state) => state.topUp);
 
-    const handleTopUp = () => {
+    const handleTopUp = async () => {
         if (!amount || isNaN(amount) || parseFloat(amount) <= 0) return;
 
         setLoading(true);
-        // Mock API call simulation
-        setTimeout(() => {
-            topUp(amount);
-            setLoading(false);
+        try {
+            await topUp(amount, method);
             alert('Top Up Successful!');
             navigation.goBack();
-        }, 1500);
+        } catch (error) {
+            alert('Top Up Failed: ' + error.message);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const PaymentMethod = ({ id, icon: Icon, label }) => (
