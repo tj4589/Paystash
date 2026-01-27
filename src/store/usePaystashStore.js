@@ -3,34 +3,105 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
+
 import { CryptoService } from '../services/CryptoService';
+import { supabase } from '../lib/supabase';
 
 export const usePaystashStore = create(
     persist(
         (set, get) => ({
             // State
-            walletBalance: 5000.00, // Unified mock balance
-            offlineBalance: 5000.00, // Sync with wallet for simulation
+            user: null, // NEW: Auth User
+            walletBalance: 0.00,
+            offlineBalance: 0.00,
             isOffline: false,
             isSyncing: false,
             keys: null, // { publicKey, secretKey }
-            transactions: [
-                {
-                    id: 'tx_init_1',
-                    title: 'Transfer to Sarah',
-                    date: new Date().toISOString(), // Use ISO string for serializability
-                    amount: -5000,
-                    type: 'debit',
-                    status: 'confirmed',
-                },
-            ],
+            transactions: [],
             pendingSync: [],
 
             // Actions
             setOffline: (status) => set({ isOffline: status }),
             setSyncing: (status) => set({ isSyncing: status }),
 
+            // Auth Actions
+            login: async (email, password) => {
+                const { data, error } = await supabase.auth.signInWithPassword({
+                    email,
+                    password,
+                });
+                if (error) throw error;
+
+                // Fetch Profile & Balance
+                if (data.user) {
+                    set({ user: data.user });
+                    await get().fetchProfile();
+                }
+                return data;
+            },
+
+            signup: async (email, password, metadata) => {
+                const { data, error } = await supabase.auth.signUp({
+                    email,
+                    password,
+                    options: { data: metadata }
+                });
+                if (error) throw error;
+                if (data.user) {
+                    set({ user: data.user });
+                    // Create Profile Row if needed (Trigger usually handles this, or do it here)
+                }
+                return data;
+            },
+
+            logout: async () => {
+                await supabase.auth.signOut();
+                set({ user: null, walletBalance: 0, transactions: [] });
+            },
+
+            fetchProfile: async () => {
+                const { user } = get();
+                if (!user) return;
+
+                // 1. Get Profile (Balance)
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('balance')
+                    .eq('id', user.id)
+                    .single();
+
+                if (profile) {
+                    set({ walletBalance: parseFloat(profile.balance || 0) });
+                }
+
+                // 2. Get Transactions
+                const { data: txs } = await supabase
+                    .from('transactions')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (txs) {
+                    set({
+                        transactions: txs.map(t => ({
+                            id: t.id,
+                            title: t.title || 'Transaction',
+                            amount: parseFloat(t.amount),
+                            date: t.created_at,
+                            type: t.type,
+                            status: t.status
+                        }))
+                    });
+                }
+            },
+
             initKeys: async () => {
+                // Check for existing session
+                const { data: { session } } = await supabase.auth.getSession();
+                if (session?.user) {
+                    set({ user: session.user });
+                    get().fetchProfile();
+                }
+
                 const keys = await CryptoService.getOrCreateKeyPair();
                 set({ keys });
             },
@@ -112,7 +183,7 @@ export const usePaystashStore = create(
             },
 
             // Receiver: Scans Payer's QR
-            processPaymentScan: (scannedPayload) => {
+            processPaymentScan: async (scannedPayload) => {
                 const state = get();
 
                 let parsedPayload;
@@ -152,16 +223,34 @@ export const usePaystashStore = create(
                 };
 
                 if (state.isOffline) {
-                    // Offline: Add to Pending In (conceptually). For MVP, we might just add to visible balance but with 'pending-sync' status
+                    // Offline: Add to Pending (Show in UI)
                     set((state) => ({
-                        // offlineBalance: state.offlineBalance + parseFloat(amount), // Offline receiving logic varies
                         transactions: [newTransaction, ...state.transactions],
-                        pendingSync: [...state.pendingSync, id]
+                        pendingSync: [...state.pendingSync, newTransaction] // Store full object for sync
                     }));
                     return { success: true, status: 'offline' };
 
                 } else {
-                    // Online: Add to Available immediately (Simulate backend success)
+                    // Online: Push to Supabase
+                    const { error } = await supabase.from('transactions').insert({
+                        id: newTransaction.id,
+                        sender_id: data.payerId, // We might not know this ID if anonymous, but assuming standard flow
+                        recipient_id: state.user?.id,
+                        amount: newTransaction.amount,
+                        type: 'credit',
+                        status: 'completed',
+                        title: newTransaction.title,
+                        signature: signature,
+                        metadata: { original_data: data }
+                    });
+
+                    if (error) {
+                        console.error("Supabase payment save failed", error);
+                        // Fallback to offline holding pattern?
+                        return { success: false, error: 'Network Error saving payment' };
+                    }
+
+                    // Optimistic UI Update
                     set((state) => ({
                         walletBalance: state.walletBalance + parseFloat(amount),
                         transactions: [newTransaction, ...state.transactions],
@@ -172,30 +261,135 @@ export const usePaystashStore = create(
 
             receiveMoney: (amount, fromUser) => {
                 // ... (Legacy direct receive, kept for compatibility if needed, or can be deprecated)
-                const numAmount = parseFloat(amount);
-                // ... logic ...
                 return { success: true };
+            },
+
+            // Top Up Action
+            topUp: async (amount, method = 'card') => {
+                const state = get();
+                const numericAmount = parseFloat(amount);
+
+                // 1. Update Local State (Optimistic)
+                const newTransaction = {
+                    id: uuidv4(),
+                    title: `Top Up via ${method}`,
+                    amount: numericAmount,
+                    type: 'topup',
+                    date: new Date().toISOString(),
+                    status: 'completed'
+                };
+
+                set((state) => ({
+                    walletBalance: state.walletBalance + numericAmount,
+                    transactions: [newTransaction, ...state.transactions]
+                }));
+
+                // 2. Persist to Supabase
+                const { error } = await supabase.from('transactions').insert({
+                    id: newTransaction.id,
+                    recipient_id: state.user?.id,
+                    amount: numericAmount,
+                    type: 'topup',
+                    status: 'completed',
+                    title: newTransaction.title,
+                    metadata: { method }
+                });
+
+                if (error) {
+                    console.error('TopUp Sync Failed', error);
+                    // Optionally revert logic or mark as pending-sync
+                }
+
+                // Update Profile Balance in DB
+                if (state.user) {
+                    await supabase.from('profiles').upsert({
+                        id: state.user.id,
+                        balance: state.walletBalance + numericAmount // Note: verify concurrency in real app
+                    });
+                }
+            },
+
+            // Withdraw/Add Transaction Action
+            addTransaction: async (txData) => {
+                const state = get();
+                const amount = parseFloat(txData.amount); // Should be negative for withdrawal
+
+                const newTransaction = {
+                    id: uuidv4(),
+                    title: txData.title,
+                    amount: amount,
+                    type: txData.type || 'debit',
+                    date: new Date().toISOString(),
+                    status: txData.status || 'completed'
+                };
+
+                // Optimistic Update
+                set((state) => ({
+                    walletBalance: state.walletBalance + amount,
+                    transactions: [newTransaction, ...state.transactions]
+                }));
+
+                // Persist
+                const { error } = await supabase.from('transactions').insert({
+                    id: newTransaction.id,
+                    sender_id: state.user?.id,
+                    amount: Math.abs(amount), // DB usually stores positive with type
+                    type: newTransaction.type,
+                    status: 'completed',
+                    title: newTransaction.title,
+                });
+
+                if (error) {
+                    console.error('Withdraw Sync Failed', error);
+                }
+
+                // Update Profile Balance in DB
+                if (state.user) {
+                    const currentBal = state.walletBalance; // Post-optimistic update
+                    await supabase.from('profiles').upsert({
+                        id: state.user.id,
+                        balance: currentBal
+                    });
+                }
             },
 
             // ... (Rest of sync logic)
             // Sync logic
-            processPendingSync: async () => { // Async for simulation
+            processPendingSync: async () => {
                 const state = get();
                 if (state.pendingSync.length === 0) return;
 
                 set({ isSyncing: true });
 
-                // Simulate Network Delay
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                // Push all pending transactions to Supabase
+                const failed = [];
+                for (const tx of state.pendingSync) {
+                    // Determine if it's a "Credit" we scanned or a "Debit" we made?
+                    // For MVP, assuming Receiver usage predominantly for "Sync"
+                    const { error } = await supabase.from('transactions').upsert({
+                        id: tx.id,
+                        amount: tx.amount,
+                        type: tx.type,
+                        status: 'completed',
+                        created_at: tx.date
+                    });
+
+                    if (error) failed.push(tx);
+                }
 
                 set((state) => {
+                    // Remove successful ones from pendingSync
+                    // Update status of those in main list
+                    const remainingIds = failed.map(t => t.id);
                     const updatedTransactions = state.transactions.map(t =>
-                        state.pendingSync.includes(t.id) ? { ...t, status: 'confirmed' } : t
+                        !remainingIds.includes(t.id) && state.pendingSync.some(p => p.id === t.id)
+                            ? { ...t, status: 'confirmed' }
+                            : t
                     );
 
                     return {
                         transactions: updatedTransactions,
-                        pendingSync: [],
+                        pendingSync: failed,
                         isSyncing: false
                     };
                 });

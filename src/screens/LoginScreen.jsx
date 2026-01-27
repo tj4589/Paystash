@@ -6,6 +6,7 @@ import Input from '../components/Input';
 import Button from '../components/Button';
 import Header from '../components/Header';
 import { THEME } from '../constants/theme';
+import { usePaystashStore } from '../store/usePaystashStore';
 
 const LoginScreen = () => {
     const navigation = useNavigation();
@@ -13,6 +14,7 @@ const LoginScreen = () => {
         email: '',
         password: '',
     });
+    const { login } = usePaystashStore();
     const [loading, setLoading] = useState(false);
 
     const handleChange = (name, value) => {
@@ -22,14 +24,22 @@ const LoginScreen = () => {
         }));
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
+        if (!formData.email || !formData.password) {
+            alert('Please fill in all fields');
+            return;
+        }
+
         setLoading(true);
-        // Mock login logic
-        console.log('Login data:', formData);
-        setTimeout(() => {
-            setLoading(false);
+        try {
+            await login(formData.email, formData.password);
+            // Navigation handled by auth state listener usually, or manual:
             navigation.navigate('Dashboard');
-        }, 1500);
+        } catch (error) {
+            alert(error.message || 'Login failed');
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (

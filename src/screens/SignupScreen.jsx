@@ -6,6 +6,7 @@ import Input from '../components/Input';
 import Button from '../components/Button';
 import Header from '../components/Header';
 import { THEME } from '../constants/theme';
+import { usePaystashStore } from '../store/usePaystashStore';
 
 const SignupScreen = () => {
     const navigation = useNavigation();
@@ -15,6 +16,7 @@ const SignupScreen = () => {
         password: '',
         confirmPassword: '',
     });
+    const { signup } = usePaystashStore();
     const [loading, setLoading] = useState(false);
 
     const handleChange = (name, value) => {
@@ -24,14 +26,26 @@ const SignupScreen = () => {
         }));
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
+        if (!formData.email || !formData.password || !formData.name) {
+            alert('Please fill in all fields');
+            return;
+        }
+        if (formData.password !== formData.confirmPassword) {
+            alert('Passwords do not match');
+            return;
+        }
+
         setLoading(true);
-        // Mock signup logic
-        console.log('Signup data:', formData);
-        setTimeout(() => {
+        try {
+            await signup(formData.email, formData.password, { full_name: formData.name });
+            alert('Account created! Please log in.');
+            navigation.navigate('Login');
+        } catch (error) {
+            alert(error.message || 'Signup failed');
+        } finally {
             setLoading(false);
-            navigation.navigate('Dashboard');
-        }, 1500);
+        }
     };
 
     return (
