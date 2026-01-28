@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { supabase } from '../lib/supabase';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import ScreenWrapper from '../components/ScreenWrapper';
@@ -32,8 +33,13 @@ const LoginScreen = () => {
 
         setLoading(true);
         try {
-            await login(formData.email, formData.password);
-            // Navigation handled by auth state listener usually, or manual:
+            const { error } = await supabase.auth.signInWithPassword({
+                email: formData.email,
+                password: formData.password,
+            });
+
+            if (error) throw error;
+            // Navigation handled by AppNavigator or explicit navigate
             navigation.navigate('Dashboard');
         } catch (error) {
             alert(error.message || 'Login failed');

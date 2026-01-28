@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { supabase } from '../lib/supabase';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import ScreenWrapper from '../components/ScreenWrapper';
@@ -38,11 +39,24 @@ const SignupScreen = () => {
 
         setLoading(true);
         try {
-            await signup(formData.email, formData.password, { full_name: formData.name });
-            alert('Account created! Please log in.');
+            const { error } = await supabase.auth.signUp({
+                email: formData.email,
+                password: formData.password,
+                options: {
+                    data: {
+                        full_name: formData.name,
+                    },
+                },
+            });
+
+            if (error) throw error;
+            
+            // Note: By default Supabase requires email verification. 
+            // If you disable it in Supabase dashboard, this works immediately.
+            alert('Account created! Please login.');
             navigation.navigate('Login');
         } catch (error) {
-            alert(error.message || 'Signup failed');
+            alert(error.message);
         } finally {
             setLoading(false);
         }
