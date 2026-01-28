@@ -17,27 +17,27 @@ const ScanQRScreen = () => {
     // New Action for Receiver
     const processPaymentScan = usePaystashStore((state) => state.processPaymentScan);
 
-    const handleBarCodeScanned = ({ type, data }) => {
+    const handleBarCodeScanned = async ({ type, data }) => {
         setScanned(true);
 
         try {
             const parsedData = JSON.parse(data);
 
-            if (parsedData.type === 'paystash-payment') { // Receiver Scanning Payer's Payment
+            if (parsedData.data?.type === 'paystash-payment') { // Receiver Scanning Payer's Payment
 
-                const result = processPaymentScan(parsedData);
+                const result = await processPaymentScan(parsedData);
 
                 if (result.success) {
                     if (result.status === 'online') {
                         Alert.alert(
                             "Payment Received",
-                            `₦${parsedData.amount.toLocaleString()} received from Payer to pending balance (Simulated Online).`,
+                            `₦${parsedData.data.amount.toLocaleString()} received from Payer to pending balance (Simulated Online).`,
                             [{ text: "OK", onPress: () => navigation.navigate('Dashboard') }]
                         );
                     } else {
                         Alert.alert(
                             "Offline Payment Received",
-                            `₦${parsedData.amount.toLocaleString()} added to Pending Balance. Will finalize when online.`,
+                            `₦${parsedData.data.amount.toLocaleString()} added to Pending Balance. Will finalize when online.`,
                             [{ text: "OK", onPress: () => navigation.navigate('Dashboard') }]
                         );
                     }

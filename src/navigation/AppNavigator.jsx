@@ -10,6 +10,7 @@ import ScanQRScreen from '../screens/ScanQRScreen';
 import TopUpScreen from '../screens/TopUpScreen';
 import GenerateQRScreen from '../screens/GenerateQRScreen';
 import WithdrawScreen from '../screens/WithdrawScreen';
+import SendMoneyScreen from '../screens/SendMoneyScreen';
 import TransactionsScreen from '../screens/TransactionsScreen';
 import { THEME } from '../constants/theme';
 
@@ -35,6 +36,7 @@ const AppNavigator = () => {
                 <Stack.Screen name="TopUp" component={TopUpScreen} />
                 <Stack.Screen name="GenerateQR" component={GenerateQRScreen} />
                 <Stack.Screen name="Withdraw" component={WithdrawScreen} />
+                <Stack.Screen name="SendMoney" component={SendMoneyScreen} />
                 <Stack.Screen name="Transactions" component={TransactionsScreen} />
             </Stack.Navigator>
         </NavigationContainer>

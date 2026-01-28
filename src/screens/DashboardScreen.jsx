@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { Wallet, ArrowUpRight, ArrowDownLeft, QrCode, Plus, Wifi, WifiOff, Eye, EyeOff } from 'lucide-react-native';
+import { Wallet, ArrowUpRight, ArrowDownLeft, QrCode, Plus, Wifi, WifiOff, Eye, EyeOff, Send } from 'lucide-react-native';
 import ScreenWrapper from '../components/ScreenWrapper';
 import Header from '../components/Header';
 import { THEME } from '../constants/theme';
@@ -16,7 +16,21 @@ const DashboardScreen = () => {
         walletBalance,
         isOffline,
         transactions,
+        fetchProfile,
     } = usePaystashStore();
+
+    const [refreshing, setRefreshing] = useState(false);
+
+    const onRefresh = async () => {
+        setRefreshing(true);
+        try {
+            await fetchProfile();
+        } catch (error) {
+            console.error('Refresh failed:', error);
+        } finally {
+            setRefreshing(false);
+        }
+    };
 
     const toggleBalanceVisibility = () => {
         setIsBalanceVisible(!isBalanceVisible);
@@ -74,7 +88,17 @@ const DashboardScreen = () => {
     return (
         <ScreenWrapper>
             <Header showLogo={true} />
-            <ScrollView contentContainerStyle={styles.content}>
+            <ScrollView
+                contentContainerStyle={styles.content}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        colors={[THEME.COLORS.secondary]}
+                        tintColor={THEME.COLORS.secondary}
+                    />
+                }
+            >
 
                 {/* Network Status Indicator */}
                 <View style={styles.modeToggle}>
@@ -112,11 +136,23 @@ const DashboardScreen = () => {
                     </Text>
                 </View>
 
+                {/* User ID / Merchant Code Display */}
+                <View style={[styles.balanceCard, { backgroundColor: 'rgba(255, 255, 255, 0.03)', marginTop: -15, padding: 12, borderWidth: 0 }]}>
+                    <Text style={{ color: THEME.COLORS.textMuted, fontSize: 12, marginBottom: 4, fontFamily: THEME.FONTS.sans }}>
+                        Your Merchant ID (Share this to receive payments)
+                    </Text>
+                    <TouchableOpacity onPress={() => {/* Clipboard logic could go here */ }}>
+                        <Text style={{ color: THEME.COLORS.secondary, fontSize: 13, fontFamily: THEME.FONTS.monospace }}>
+                            {usePaystashStore.getState().user?.id || 'Start Tunnel to Load ID'}
+                        </Text>
+                    </TouchableOpacity>
+                </View>
+
                 {/* Quick Actions */}
                 <View style={styles.actionsGrid}>
                     <ActionCard icon={QrCode} label="Scan QR" onPress={() => navigation.navigate('ScanQR')} />
-                    <ActionCard icon={ArrowUpRight} label="Generate QR" onPress={() => navigation.navigate('GenerateQR')} />
-                    <ActionCard icon={ArrowDownLeft} label="Withdraw" onPress={() => navigation.navigate('Withdraw')} />
+                    <ActionCard icon={Send} label="Send" onPress={() => navigation.navigate('SendMoney')} />
+                    <ActionCard icon={ArrowUpRight} label="Receive" onPress={() => navigation.navigate('GenerateQR')} />
                     <ActionCard icon={Plus} label="Top Up" onPress={() => navigation.navigate('TopUp')} />
                 </View>
 

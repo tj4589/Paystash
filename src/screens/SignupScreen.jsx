@@ -14,6 +14,7 @@ const SignupScreen = () => {
     const [formData, setFormData] = useState({
         name: '',
         email: '',
+        nin: '',
         password: '',
         confirmPassword: '',
     });
@@ -28,10 +29,16 @@ const SignupScreen = () => {
     };
 
     const handleSubmit = async () => {
-        if (!formData.email || !formData.password || !formData.name) {
+        if (!formData.email || !formData.password || !formData.name || !formData.nin) {
             alert('Please fill in all fields');
             return;
         }
+
+        if (formData.nin.length !== 11) {
+            alert('NIN must be 11 digits');
+            return;
+        }
+
         if (formData.password !== formData.confirmPassword) {
             alert('Passwords do not match');
             return;
@@ -39,24 +46,15 @@ const SignupScreen = () => {
 
         setLoading(true);
         try {
-            const { error } = await supabase.auth.signUp({
-                email: formData.email,
-                password: formData.password,
-                options: {
-                    data: {
-                        full_name: formData.name,
-                    },
-                },
+            await signup(formData.email, formData.password, {
+                full_name: formData.name,
+                nin: formData.nin,
             });
 
-            if (error) throw error;
-            
-            // Note: By default Supabase requires email verification. 
-            // If you disable it in Supabase dashboard, this works immediately.
             alert('Account created! Please login.');
             navigation.navigate('Login');
         } catch (error) {
-            alert(error.message);
+            alert(error.message || 'Signup Failed');
         } finally {
             setLoading(false);
         }
@@ -68,13 +66,13 @@ const SignupScreen = () => {
             <View style={styles.content}>
                 <View style={styles.headerSection}>
                     <Text style={styles.title}>Create Account</Text>
-                    <Text style={styles.subtitle}>Join the offline payment revolution.</Text>
+                    <Text style={styles.subtitle}>Enter your details to get started.</Text>
                 </View>
 
                 <View style={styles.form}>
                     <Input
-                        label="Full Name"
-                        placeholder="John Doe"
+                        label="Full Name (as on BVN/NIN)"
+                        placeholder="e.g. Musa Ibrahim"
                         value={formData.name}
                         onChangeText={(text) => handleChange('name', text)}
                     />
@@ -85,6 +83,14 @@ const SignupScreen = () => {
                         onChangeText={(text) => handleChange('email', text)}
                         keyboardType="email-address"
                         autoCapitalize="none"
+                    />
+                    <Input
+                        label="NIN (11 Digits)"
+                        placeholder="12345678901"
+                        value={formData.nin}
+                        onChangeText={(text) => handleChange('nin', text)}
+                        keyboardType="numeric"
+                        maxLength={11}
                     />
                     <Input
                         label="Password"

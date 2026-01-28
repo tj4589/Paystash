@@ -1,14 +1,14 @@
 export const COLORS = {
-    primary: '#0a192f',
-    secondary: '#64ffda',
-    accent: '#ffd700',
-    bg: '#020c1b',
-    bgCard: '#112240',
-    text: '#e6f1ff',
-    textMuted: '#8892b0',
-    success: '#28a745',
-    error: '#dc3545',
-    warning: '#ffc107',
+    primary: '#0f172a',    // Dark Navy for heavy elements
+    secondary: '#0055ff',  // Vivid Blue for actions (replaces neon teal)
+    accent: '#f59e0b',     // Amber for highlights
+    bg: '#ffffff',         // White background
+    bgCard: '#f1f5f9',     // Light Slate for cards (subtle separation)
+    text: '#1e293b',       // Slate 800 for main text
+    textMuted: '#64748b',  // Slate 500 for secondary text
+    success: '#10b981',    // Emerald Green
+    error: '#ef4444',      // Red
+    warning: '#f59e0b',    // Amber
 };
 
 export const FONTS = {

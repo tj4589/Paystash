@@ -55,6 +55,7 @@ const GenerateQRScreen = () => {
             return;
         }
 
+
         if (!recipientId.trim()) {
             Alert.alert('Error', 'Please enter Recipient ID');
             return;
