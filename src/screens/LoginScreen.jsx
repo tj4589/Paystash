@@ -33,13 +33,7 @@ const LoginScreen = () => {
 
         setLoading(true);
         try {
-            const { error } = await supabase.auth.signInWithPassword({
-                email: formData.email,
-                password: formData.password,
-            });
-
-            if (error) throw error;
-            // Navigation handled by AppNavigator or explicit navigate
+            await login(formData.email, formData.password);
             navigation.navigate('Dashboard');
         } catch (error) {
             alert(error.message || 'Login failed');

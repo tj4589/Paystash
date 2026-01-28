@@ -95,8 +95,8 @@ class MockQueryBuilder {
             resolve({ data: [], error: null });
         } else if (this.table === 'profiles') {
             // Mock a profile with balance for the demo
-            console.log('⚡️ [Mock] Returning demo profile with ₦5,000 balance');
-            const profile = { id: 'mock-user-id', balance: 5000, email: 'demo@paystash.com' };
+            console.log('⚡️ [Mock] Returning demo profile with balance');
+            const profile = { id: 'mock-user-id', balance: 5000, email: 'loading...' };
             resolve({ data: this.isSingle ? profile : [profile], error: null });
         } else {
             resolve({ data: [], error: null });

@@ -17,6 +17,7 @@ const DashboardScreen = () => {
         isOffline,
         transactions,
         fetchProfile,
+        user
     } = usePaystashStore();
 
     const [refreshing, setRefreshing] = useState(false);
@@ -138,21 +139,28 @@ const DashboardScreen = () => {
 
                 {/* User ID / Merchant Code Display */}
                 <View style={[styles.balanceCard, { backgroundColor: 'rgba(255, 255, 255, 0.03)', marginTop: -15, padding: 12, borderWidth: 0 }]}>
-                    <Text style={{ color: THEME.COLORS.textMuted, fontSize: 12, marginBottom: 4, fontFamily: THEME.FONTS.sans }}>
-                        Your Merchant ID (Share this to receive payments)
-                    </Text>
-                    <TouchableOpacity onPress={() => {/* Clipboard logic could go here */ }}>
-                        <Text style={{ color: THEME.COLORS.secondary, fontSize: 13, fontFamily: THEME.FONTS.monospace }}>
-                            {usePaystashStore.getState().user?.id || 'Start Tunnel to Load ID'}
-                        </Text>
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <View>
+                            <Text style={{ color: THEME.COLORS.textMuted, fontSize: 12, marginBottom: 4, fontFamily: THEME.FONTS.sans }}>
+                                Your Payment ID
+                            </Text>
+                            <Text style={{ color: THEME.COLORS.secondary, fontSize: 14, fontWeight: 'bold', fontFamily: THEME.FONTS.sans }}>
+                                {user?.email || 'Login to see ID'}
+                            </Text>
+                        </View>
+                        {/* Identity Status */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(52, 211, 153, 0.1)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 }}>
+                            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#34d399', marginRight: 6 }} />
+                            <Text style={{ color: '#34d399', fontSize: 10, fontWeight: 'bold' }}>IDENTITY SYNCED</Text>
+                        </View>
+                    </View>
                 </View>
 
                 {/* Quick Actions */}
                 <View style={styles.actionsGrid}>
                     <ActionCard icon={QrCode} label="Scan QR" onPress={() => navigation.navigate('ScanQR')} />
-                    <ActionCard icon={Send} label="Send" onPress={() => navigation.navigate('SendMoney')} />
-                    <ActionCard icon={ArrowUpRight} label="Receive" onPress={() => navigation.navigate('GenerateQR')} />
+                    <ActionCard icon={ArrowUpRight} label="Generate QR" onPress={() => navigation.navigate('GenerateQR')} />
+                    <ActionCard icon={ArrowDownLeft} label="Withdraw" onPress={() => navigation.navigate('Withdraw')} />
                     <ActionCard icon={Plus} label="Top Up" onPress={() => navigation.navigate('TopUp')} />
                 </View>
 
@@ -164,24 +172,26 @@ const DashboardScreen = () => {
                             <Text style={styles.viewAllText}>View All</Text>
                         </TouchableOpacity>
                     </View>
-                    {transactions.length === 0 ? (
-                        <Text style={styles.emptyText}>No transactions yet</Text>
-                    ) : (
-                        <View style={styles.transactionList}>
-                            {transactions.slice(0, 5).map((tx) => (
-                                <TransactionItem
-                                    key={tx.id}
-                                    title={tx.title}
-                                    date={tx.date}
-                                    amount={tx.amount}
-                                    status={tx.status}
-                                />
-                            ))}
-                        </View>
-                    )}
-                </View>
-            </ScrollView>
-        </ScreenWrapper>
+                    {
+                        transactions.length === 0 ? (
+                            <Text style={styles.emptyText}>No transactions yet</Text>
+                        ) : (
+                            <View style={styles.transactionList}>
+                                {transactions.slice(0, 5).map((tx) => (
+                                    <TransactionItem
+                                        key={tx.id}
+                                        title={tx.title}
+                                        date={tx.date}
+                                        amount={tx.amount}
+                                        status={tx.status}
+                                    />
+                                ))}
+                            </View>
+                        )
+                    }
+                </View >
+            </ScrollView >
+        </ScreenWrapper >
     );
 };
 

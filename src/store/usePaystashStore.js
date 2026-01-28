@@ -1,12 +1,15 @@
-import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
+import * as zustand from 'zustand';
+const { create } = zustand;
+import * as middleware from 'zustand/middleware';
+const { persist, createJSONStorage } = middleware;
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
-import { Buffer } from 'buffer'; // Ensure buffer is available or use util
-
+import { Alert } from 'react-native';
 import { CryptoService } from '../services/CryptoService';
 import { supabase } from '../lib/supabase';
+
+console.log("[Store] Zustand Create found:", typeof create);
 
 // Helper for hashing (using simple string hash for demo if crypto lib unavailable for hashing)
 // in real app use SHA-256
@@ -108,15 +111,47 @@ export const usePaystashStore = create(
             },
 
             fetchProfile: async () => {
+                // Get fresher user info from auth session
+                const { data: { user: authUser } } = await supabase.auth.getUser();
+                if (authUser) {
+                    set({ user: authUser });
+                }
+
+                // 0. Auto-sync if online
+                if (!get().isOffline) {
+                    await get().processPendingSync();
+                }
+
                 const { user, transactions: localTransactions } = get();
                 if (!user) return;
 
                 // 1. Fetch Server State
-                const { data: profile } = await supabase
+                let { data: profile, error: pError } = await supabase
                     .from('profiles')
-                    .select('balance')
+                    .select('balance, public_key')
                     .eq('id', user.id)
                     .single();
+
+                // 1.1 Handle Missing Profile (Auto-Repair)
+                if (pError && pError.code === 'PGRST116') {
+                    const newProfile = {
+                        id: user.id,
+                        email: user.email,
+                        balance: 0,
+                        public_key: get().keys?.publicKey
+                    };
+                    const { error: insError } = await supabase.from('profiles').insert(newProfile);
+                    if (!insError) profile = newProfile;
+                }
+
+                // 1.2 Auto-Sync Public Key if missing or different on server
+                const { keys } = get();
+                if (profile && keys?.publicKey && profile.public_key !== keys.publicKey) {
+                    console.log("[Identity] Key mismatch/missing detected. Syncing to server...");
+                    await supabase.from('profiles')
+                        .update({ public_key: keys.publicKey })
+                        .eq('id', user.id);
+                }
 
                 const { data: serverTxs } = await supabase
                     .from('transactions')
@@ -127,10 +162,11 @@ export const usePaystashStore = create(
                 const serverBalance = parseFloat(profile?.balance || 0);
 
                 // 2. Identify Local-Only (Offline) Transactions
-                // Transactions with status 'locked' or 'pending-sync' are not yet fully reflected on server
-                const offlineTxs = localTransactions.filter(t =>
-                    t.status === 'locked' || t.status === 'pending-sync'
-                );
+                const offlineTxs = localTransactions.filter(t => {
+                    const isPending = t.status === 'locked' || t.status === 'pending-sync';
+                    const alreadyOnServer = (serverTxs || []).some(stx => stx.id === t.id);
+                    return isPending && !alreadyOnServer;
+                });
 
                 // 3. Map Server Transactions to App Format
                 const formattedServerTxs = (serverTxs || []).map(t => {
@@ -278,11 +314,22 @@ export const usePaystashStore = create(
                 }
 
                 const { data, signature } = parsedPayload;
-                const { amount, id, payerPublicKey, sequence } = data;
+                const { amount, id, payerPublicKey, recipientId, sequence } = data;
 
                 // 1. Double Spend Check (Local cache)
                 if (state.transactions.find(t => t.id === id)) {
                     return { success: false, error: 'Transaction already processed' };
+                }
+
+                // 2. Recipient Targeting Check
+                // If a recipient was specified, only they can process it
+                const currentUserEmail = state.user?.email?.toLowerCase()?.trim();
+                const targetEmail = recipientId?.toLowerCase()?.trim();
+
+                console.log(`[Scan] Targeting Check: Target=${targetEmail}, Me=${currentUserEmail}`);
+
+                if (targetEmail && targetEmail !== 'any' && targetEmail !== currentUserEmail) {
+                    return { success: false, error: `This payment was intended for ${targetEmail}. You are ${currentUserEmail || 'not logged in'}.` };
                 }
 
                 // 2. Verify Signature
@@ -321,35 +368,33 @@ export const usePaystashStore = create(
                     metadata: { sequence, risk: isIdentityVerified ? 'low' : 'unknown' }
                 };
 
+                // 4. Update Local State (Immediate Feedback)
+                set((state) => ({
+                    walletBalance: state.walletBalance + parseFloat(amount),
+                    transactions: [newTransaction, ...state.transactions],
+                }));
+
                 if (state.isOffline) {
                     set((state) => ({
-                        transactions: [newTransaction, ...state.transactions],
                         pendingSync: [...state.pendingSync, newTransaction]
                     }));
                     return { success: true, status: 'offline' };
                 } else {
-                    // Online: Push to DB
-                    const { error } = await supabase.from('transactions').insert({
-                        id: newTransaction.id,
-                        sender_id: null, // We link via metadata or lookup if possible
-                        recipient_id: state.user?.id,
-                        amount: newTransaction.amount,
-                        type: 'credit',
-                        status: 'completed',
-                        title: newTransaction.title,
-                        signature: signature,
-                        metadata: {
+                    // Online: Call Secure RPC to verify and move money
+                    const { error } = await supabase.rpc('claim_qr_payment', {
+                        p_id: id,
+                        p_amount: parseFloat(amount),
+                        p_sender_public_key: payerPublicKey,
+                        p_signature: signature,
+                        p_metadata: {
                             original_data: data,
                             verified: isIdentityVerified
                         }
                     });
 
-                    if (error) return { success: false, error: 'Sync Error' };
+                    if (error) return { success: false, error: error.message };
 
-                    set((state) => ({
-                        walletBalance: state.walletBalance + parseFloat(amount),
-                        transactions: [newTransaction, ...state.transactions],
-                    }));
+                    await get().fetchProfile();
                     return { success: true, status: 'online' };
                 }
             },
@@ -370,31 +415,57 @@ export const usePaystashStore = create(
             },
 
             // ... Sync and other actions remaining similar
+            // Syncing Logic
             processPendingSync: async () => {
                 const state = get();
-                if (state.pendingSync.length === 0) return;
+                if (state.pendingSync.length === 0 || state.isOffline) return;
+
+                console.log(`[Sync] Attempting to sync ${state.pendingSync.length} transactions...`);
                 set({ isSyncing: true });
 
-                const failed = [];
+                const successIds = [];
                 for (const tx of state.pendingSync) {
-                    // Start simple: just push everything
-                    const { error } = await supabase.from('transactions').insert({
-                        id: tx.id,
-                        recipient_id: state.user?.id,
-                        amount: tx.amount,
-                        type: tx.type,
-                        status: 'completed',
-                        title: tx.title,
-                        created_at: tx.date
-                    });
-                    if (error) failed.push(tx);
+                    try {
+                        if (tx.type === 'credit' && tx.metadata?.original_data) {
+                            // Offline QR Scan -> Needs RPC Check
+                            const { error } = await supabase.rpc('claim_qr_payment', {
+                                p_id: tx.id,
+                                p_amount: parseFloat(tx.amount),
+                                p_sender_public_key: tx.metadata.original_data.payerPublicKey,
+                                p_signature: tx.metadata.signature || tx.signature,
+                                p_metadata: tx.metadata
+                            });
+                            if (!error) successIds.push(tx.id);
+                        } else {
+                            // Generic insert (Topups / etc)
+                            const { error } = await supabase.from('transactions').insert({
+                                id: tx.id,
+                                recipient_id: state.user?.id,
+                                amount: tx.amount,
+                                type: tx.type,
+                                status: 'completed',
+                                title: tx.title,
+                                created_at: tx.date
+                            });
+                            if (!error) successIds.push(tx.id);
+                        }
+                    } catch (e) {
+                        console.error("[Sync] Item failed:", tx.id, e);
+                    }
                 }
 
                 set(state => ({
-                    pendingSync: failed,
-                    transactions: state.transactions.map(t => failed.find(f => f.id === t.id) ? t : { ...t, status: 'completed' }),
+                    pendingSync: state.pendingSync.filter(t => !successIds.includes(t.id)),
+                    transactions: state.transactions.map(t =>
+                        successIds.includes(t.id) ? { ...t, status: 'completed' } : t
+                    ),
                     isSyncing: false
                 }));
+
+                if (successIds.length > 0) {
+                    console.log(`[Sync] Successfully synced ${successIds.length} items`);
+                    await get().fetchProfile(); // Refresh balance after sync
+                }
             },
 
             topUp: async (amount, method) => {
@@ -433,11 +504,23 @@ export const usePaystashStore = create(
 
                         const { error: txError } = await supabase
                             .from('transactions')
-                            .insert({ ...newTx, recipient_id: state.user.id });
+                            .insert({
+                                id: newTx.id,
+                                recipient_id: state.user.id,
+                                amount: newTx.amount,
+                                type: newTx.type,
+                                status: newTx.status,
+                                title: newTx.title,
+                                created_at: newTx.date
+                            });
 
                         if (txError) throw txError;
+
+                        // Success Alert
+                        console.log("[Debug] Top-up sync success");
                     } catch (err) {
                         console.error("Top-up sync error:", err);
+                        Alert.alert("Database Error", err.message || "Failed to update balance on server");
                     }
                 }
             },

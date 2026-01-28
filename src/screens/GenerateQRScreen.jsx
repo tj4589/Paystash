@@ -56,11 +56,8 @@ const GenerateQRScreen = () => {
         }
 
 
-        if (!recipientId.trim()) {
-            Alert.alert('Error', 'Please enter Recipient ID');
-            return;
-        }
-
+        // Recipient ID is now optional for "ANY" recipient
+        // But we skip the error check if empty or "ANY"
         setShowConfirmation(true);
     };
 
@@ -148,14 +145,15 @@ const GenerateQRScreen = () => {
                                 onChangeText={setAmount}
                             />
 
-                            <Text style={styles.label}>Recipient ID (Merchant)</Text>
+                            <Text style={styles.label}>Recipient Email (Optional)</Text>
                             <TextInput
                                 style={styles.input}
-                                placeholder="Enter Recipient ID"
+                                placeholder="Enter Recipient Email (or leave blank)"
                                 placeholderTextColor={THEME.COLORS.textMuted}
                                 value={recipientId}
                                 onChangeText={setRecipientId}
                                 autoCapitalize="none"
+                                keyboardType="email-address"
                             />
 
                             <TouchableOpacity style={styles.button} onPress={handleGenerate}>
