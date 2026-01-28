@@ -1,8 +1,8 @@
 # Paystash Project Structure
 
-The source code for this project is located in the `mobile/` directory.
+The source code for this project is located in the **root directory**.
 
-- **Mobile App**: `./mobile/` (Run with `npm start` inside this folder)
-- **Backend/Database**: Managed via Supabase (see `schema.sql`)
+- **Mobile App**: `./` (Root directory) - Run with `npx expo start`
+- **Backend/Database**: `./backend/` (Supabase schema and migrations)
 
-The root `src/` folder was removed to avoid confusion with the mobile codebase.
+The redundant `mobile/` directory has been removed.
